@@ -60,6 +60,7 @@ Console.info(`FORMAT: ${FORMAT}`);
 			const breakLine = body?.tt ? "<br />" : body?.timedtext ? "&#x000A;" : "&#x000A;";
 			if (body?.timedtext?.head?.wp?.[1]?.["@rc"]) body.timedtext.head.wp[1]["@rc"] = "1";
 			let paragraph = body?.tt?.body?.div?.p ?? body?.timedtext?.body?.p;
+			paragraph = Array.isArray(paragraph) ? paragraph : paragraph ? [paragraph] : [];
 			const fullText = [];
 			paragraph = paragraph.map(para => {
 				if (para?.s) {
@@ -73,7 +74,21 @@ Console.info(`FORMAT: ${FORMAT}`);
 				fullText.push(sentences ?? "\u200b");
 				return para;
 			});
-			const translation = await Translator(Settings.Vendor, Settings.Method, fullText, Languages, Settings?.[Settings?.Vendor], Settings?.Times, Settings?.Interval, Settings?.Exponential);
+			Console.info(`XML paragraph count: ${paragraph?.length ?? 0}`);
+			Console.info(`XML fullText count: ${fullText.length}`);
+			let translation = await Translator(Settings.Vendor, Settings.Method, fullText, Languages, Settings?.[Settings?.Vendor], Settings?.Times, Settings?.Interval, Settings?.Exponential);
+			Console.info(`XML translation count: ${translation?.length ?? 0}`);
+			Console.debug(`XML first origin: ${JSON.stringify(fullText?.[0])}`);
+			Console.debug(`XML first translation: ${JSON.stringify(translation?.[0])}`);
+			if (PLATFORM === "YouTube" && (!Array.isArray(translation) || translation.length !== fullText.length)) {
+				Console.warn(`YouTube XML translation mismatch: origin=${fullText.length}, translated=${translation?.length ?? 0}; retry with Row`);
+				translation = await Translator(Settings.Vendor, "Row", fullText, Languages, Settings?.[Settings?.Vendor], Settings?.Times, Settings?.Interval, Settings?.Exponential);
+			}
+			if (!Array.isArray(translation)) translation = [];
+			translation = fullText.map((_, i) => {
+				const text = translation[i] ?? "";
+				return Array.isArray(text) ? text.flat(Number.POSITIVE_INFINITY).join("") : text;
+			});
 			paragraph = paragraph.map((para, i) => {
 				const span = para?.span ?? para;
 				if (Array.isArray(span))
@@ -84,6 +99,7 @@ Console.info(`FORMAT: ${FORMAT}`);
 				return para;
 			});
 			$response.body = XML.stringify(body);
+			Console.info("XML write-back finished");
 			break;
 		}
 		case "text/vtt":
@@ -324,6 +340,11 @@ async function Translator(vendor = "Google", method = "Part", text = [], [source
  * @return {String} combined text
  */
 function combineText(originText, transText, ShowOnly = false, position = "Forward", lineBreak = "\n") {
+	originText = originText ?? "";
+	transText = transText ?? "";
+	if (Array.isArray(transText)) transText = transText.flat(Number.POSITIVE_INFINITY).join("");
+	else if (typeof transText !== "string") transText = String(transText);
+	if (!transText.trim()) return originText;
 	let text = "";
 	switch (ShowOnly) {
 		case true:
