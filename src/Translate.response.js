@@ -7,10 +7,11 @@ import setENV from "./function/setENV.mjs";
 import detectFormat from "./function/detectFormat.mjs";
 import detectPlatform from "./function/detectPlatform.mjs";
 import setCache from "./function/setCache.mjs";
+import { ensureYouTubeTimedTextRows, readYouTubeTimedTextParagraph, writeYouTubeTimedTextParagraph } from "./function/youtubeTimedText.mjs";
 import Translate from "./class/Translate.mjs";
 import { BrowseResponse } from "./protobuf/google/protos/youtube/api/innertube/BrowseResponse.js";
 import { ColorLyricsResponse } from "./protobuf/spotify/lyrics/Lyrics.js";
-Console.warn("Hey-sayiwanna YouTube Translate FIX 13 active");
+Console.warn("Hey-sayiwanna YouTube Translate FIX 14 active");
 /***************** Processing *****************/
 // 解构URL
 const url = new URL($request.url);
@@ -57,26 +58,29 @@ Console.info(`FORMAT: ${FORMAT}`);
 		case "application/xml":
 		case "application/plist":
 		case "application/x-plist": {
+			const originalXMLLength = $response.body?.length ?? 0;
 			body = XML.parse($response.body);
 			const breakLine = body?.tt ? "<br />" : body?.timedtext ? "&#x000A;" : "&#x000A;";
-			if (body?.timedtext?.head?.wp?.[1]?.["@rc"]) body.timedtext.head.wp[1]["@rc"] = "1";
+			if (body?.timedtext) ensureYouTubeTimedTextRows(body, 2);
 			let paragraph = body?.tt?.body?.div?.p ?? body?.timedtext?.body?.p;
 			paragraph = Array.isArray(paragraph) ? paragraph : paragraph ? [paragraph] : [];
 			const fullText = [];
+			const youtubeParagraphs = [];
 			paragraph = paragraph.map(para => {
-				if (para?.s) {
-					if (Array.isArray(para.s)) para["#"] = para.s.map(seg => seg["#"]).join(" ");
-					else para["#"] = para.s?.["#"] ?? "";
-					// biome-ignore lint/performance/noDelete: <explanation>
-					delete para.s;
+				if (body?.timedtext) {
+					const parsed = readYouTubeTimedTextParagraph(para);
+					youtubeParagraphs.push(parsed);
+					fullText.push(parsed.text);
+				} else {
+					const span = para?.span ?? para;
+					const sentences = Array.isArray(span) ? span?.map(span => span?.["#"] ?? "\u200b").join(breakLine) : span?.["#"];
+					fullText.push(sentences ?? "\u200b");
 				}
-				const span = para?.span ?? para;
-				const sentences = Array.isArray(span) ? span?.map(span => span?.["#"] ?? "\u200b").join(breakLine) : span?.["#"];
-				fullText.push(sentences ?? "\u200b");
 				return para;
 			});
 			Console.info(`XML paragraph count: ${paragraph?.length ?? 0}`);
 			Console.info(`XML fullText count: ${fullText.length}`);
+			Console.info(`YouTube srv3 segmented paragraph count: ${youtubeParagraphs.filter(item => item.segmented).length}`);
 			let translation = await Translator(Settings.Vendor, Settings.Method, fullText, Languages, Settings?.[Settings?.Vendor], Settings?.Times, Settings?.Interval, Settings?.Exponential);
 			Console.info(`XML translation count: ${translation?.length ?? 0}`);
 			Console.debug(`XML first origin: ${JSON.stringify(fullText?.[0])}`);
@@ -91,15 +95,29 @@ Console.info(`FORMAT: ${FORMAT}`);
 				return Array.isArray(text) ? text.flat(Number.POSITIVE_INFINITY).join("") : text;
 			});
 			paragraph = paragraph.map((para, i) => {
-				const span = para?.span ?? para;
-				if (Array.isArray(span))
-					translation?.[i]?.split(breakLine).forEach((text, j) => {
-						if (span[j]?.["#"]) span[j]["#"] = combineText(span[j]["#"], text, Settings?.ShowOnly, Settings?.Position, " ");
+				if (body?.timedtext)
+					writeYouTubeTimedTextParagraph(para, fullText[i], translation?.[i], {
+						segmented: youtubeParagraphs[i]?.segmented,
+						showOnly: Settings?.ShowOnly,
+						position: Settings?.Position,
+						lineBreak: breakLine,
 					});
-				else if (span?.["#"]) span["#"] = combineText(span["#"], translation?.[i], Settings?.ShowOnly, Settings?.Position, breakLine);
+				else {
+					const span = para?.span ?? para;
+					if (Array.isArray(span))
+						translation?.[i]?.split(breakLine).forEach((text, j) => {
+							if (span[j]?.["#"]) span[j]["#"] = combineText(span[j]["#"], text, Settings?.ShowOnly, Settings?.Position, " ");
+						});
+					else if (span?.["#"]) span["#"] = combineText(span["#"], translation?.[i], Settings?.ShowOnly, Settings?.Position, breakLine);
+				}
 				return para;
 			});
 			$response.body = XML.stringify(body);
+			$response.headers = $response.headers ?? {};
+			$response.headers["X-Hey-Sayiwanna-YouTube-Fix"] = "14";
+			$response.headers["X-Hey-Sayiwanna-XML-Original-Length"] = String(originalXMLLength);
+			$response.headers["X-Hey-Sayiwanna-XML-Modified-Length"] = String($response.body.length);
+			Console.info(`XML write-back length: origin=${originalXMLLength}, modified=${$response.body.length}`);
 			Console.info("XML write-back finished");
 			break;
 		}

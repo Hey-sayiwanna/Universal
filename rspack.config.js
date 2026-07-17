@@ -9,6 +9,7 @@ export default defineConfig({
 		"External.Lyrics.response": "./src/External.Lyrics.response.js",
 		"Manifest.response": "./src/Manifest.response.js",
 		"Translate.response": "./src/Translate.response.js",
+		"Translate.response.youtube-fix-v14": "./src/YouTube.Translate.response.js",
 	},
 	output: {
 		chunkFormat: false,
