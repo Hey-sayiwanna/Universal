@@ -10,6 +10,7 @@ import setCache from "./function/setCache.mjs";
 import Translate from "./class/Translate.mjs";
 import { BrowseResponse } from "./protobuf/google/protos/youtube/api/innertube/BrowseResponse.js";
 import { ColorLyricsResponse } from "./protobuf/spotify/lyrics/Lyrics.js";
+Console.warn("Hey-sayiwanna YouTube Translate FIX 13 active");
 /***************** Processing *****************/
 // 解构URL
 const url = new URL($request.url);
@@ -344,7 +345,9 @@ function combineText(originText, transText, ShowOnly = false, position = "Forwar
 	transText = transText ?? "";
 	if (Array.isArray(transText)) transText = transText.flat(Number.POSITIVE_INFINITY).join("");
 	else if (typeof transText !== "string") transText = String(transText);
-	if (!transText.trim()) return originText;
+	if (!transText.trim()) {
+		return originText;
+	}
 	let text = "";
 	switch (ShowOnly) {
 		case true:
